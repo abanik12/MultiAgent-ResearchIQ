@@ -13,6 +13,8 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_model: str = "gpt-5.4-mini"
     openai_embedding_model: str = "text-embedding-3-small"
+    openai_input_price_per_1m: float | None = None
+    openai_output_price_per_1m: float | None = None
 
     tavily_api_key: str | None = None
     qdrant_url: str = "http://localhost:6333"

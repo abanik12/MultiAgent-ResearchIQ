@@ -11,8 +11,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from dotenv import load_dotenv
 
-from src.agents.coordinator import plan_research
+from src.agents.coordinator import plan_research_with_usage
 from src.graph.graph import run_research
+from src.utils.token_cost import format_usage_summary
 
 
 async def main() -> None:
@@ -35,8 +36,9 @@ async def main() -> None:
         print(f"\nSynthesis: {result['synthesis']}")
     else:
         print(f"Planning research for: {query}\n")
-        plan = await plan_research(query)
-        print(json.dumps(plan.model_dump(), indent=2))
+        result = await plan_research_with_usage(query)
+        print(json.dumps(result.plan.model_dump(), indent=2))
+        print(format_usage_summary(result.usage))
 
 
 if __name__ == "__main__":

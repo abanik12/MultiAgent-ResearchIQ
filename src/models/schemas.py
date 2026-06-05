@@ -15,6 +15,23 @@ class ResearchPlan(BaseModel):
     research_strategy: str
 
 
+class TokenUsage(BaseModel):
+    model: str
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    input_cost_usd: float = 0.0
+    output_cost_usd: float = 0.0
+    total_cost_usd: float = 0.0
+
+
+class ResearchPlanResult(BaseModel):
+    """Coordinator output plus token/cost metadata."""
+
+    plan: ResearchPlan
+    usage: TokenUsage
+
+
 class SearchResult(BaseModel):
     """Web research finding (Phase 2+)."""
 

@@ -4,7 +4,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from src.config.settings import get_settings
-from src.models.schemas import ResearchPlan
+from src.models.schemas import ResearchPlan, ResearchPlanResult
+from src.utils.token_cost import extract_token_usage
 
 COORDINATOR_SYSTEM_PROMPT = """You are a research planning coordinator for ResearchIQ.
 
@@ -36,18 +37,27 @@ def _build_llm(settings) -> ChatOpenAI:
     )
 
 
-async def plan_research(query: str) -> ResearchPlan:
-    """Decompose a research query into structured sub-tasks."""
+async def plan_research_with_usage(query: str) -> ResearchPlanResult:
+    """Decompose a research query into structured sub-tasks with token usage."""
     settings = get_settings()
     _configure_tracing(settings)
 
     llm = _build_llm(settings)
-    structured_llm = llm.with_structured_output(ResearchPlan)
+    structured_llm = llm.with_structured_output(ResearchPlan, include_raw=True)
 
     messages = [
         SystemMessage(content=COORDINATOR_SYSTEM_PROMPT),
         HumanMessage(content=query),
     ]
 
-    plan: ResearchPlan = await structured_llm.ainvoke(messages)
-    return plan.model_copy(update={"original_query": query})
+    response = await structured_llm.ainvoke(messages)
+    plan: ResearchPlan = response["parsed"].model_copy(update={"original_query": query})
+    usage = extract_token_usage(response["raw"], settings.openai_model)
+
+    return ResearchPlanResult(plan=plan, usage=usage)
+
+
+async def plan_research(query: str) -> ResearchPlan:
+    """Decompose a research query into structured sub-tasks."""
+    result = await plan_research_with_usage(query)
+    return result.plan
