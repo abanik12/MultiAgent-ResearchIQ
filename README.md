@@ -2,6 +2,10 @@
 
 **ResearchIQ** is an autonomous AI Research & Competitive Intelligence Agent. Give it a topic or question and it produces a structured, cited intelligence report — via CLI, streaming API, or Streamlit UI.
 
+## Demo
+
+[Watch the product demo](https://drive.google.com/file/d/1bu_JgUaxX137nVob71hmEF9shC_2Vn7u/view?usp=sharing) — live agent trace, report synthesis, and markdown/PDF export.
+
 ## Features
 
 | Capability | Description |
