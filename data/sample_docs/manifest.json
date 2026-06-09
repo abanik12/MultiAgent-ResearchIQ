@@ -1,0 +1,72 @@
+[
+  {
+    "id": "attention_is_all_you_need",
+    "title": "Attention Is All You Need",
+    "category": "transformers",
+    "arxiv_id": "1706.03762",
+    "filename": "1706.03762_attention.pdf"
+  },
+  {
+    "id": "bert",
+    "title": "BERT: Pre-training of Deep Bidirectional Transformers",
+    "category": "transformers",
+    "arxiv_id": "1810.04805",
+    "filename": "1810.04805_bert.pdf"
+  },
+  {
+    "id": "gpt3",
+    "title": "Language Models are Few-Shot Learners",
+    "category": "llms",
+    "arxiv_id": "2005.14165",
+    "filename": "2005.14165_gpt3.pdf"
+  },
+  {
+    "id": "llama",
+    "title": "LLaMA: Open and Efficient Foundation Language Models",
+    "category": "llms",
+    "arxiv_id": "2302.13971",
+    "filename": "2302.13971_llama.pdf"
+  },
+  {
+    "id": "instructgpt",
+    "title": "Training language models to follow instructions with human feedback",
+    "category": "llms",
+    "arxiv_id": "2203.02155",
+    "filename": "2203.02155_instructgpt.pdf"
+  },
+  {
+    "id": "vit",
+    "title": "An Image is Worth 16x16 Words: Transformers for Image Recognition at Scale",
+    "category": "vision",
+    "arxiv_id": "2010.11929",
+    "filename": "2010.11929_vit.pdf"
+  },
+  {
+    "id": "clip",
+    "title": "Learning Transferable Visual Models From Natural Language Supervision",
+    "category": "vision",
+    "arxiv_id": "2103.00020",
+    "filename": "2103.00020_clip.pdf"
+  },
+  {
+    "id": "sam",
+    "title": "Segment Anything",
+    "category": "vision",
+    "arxiv_id": "2304.02643",
+    "filename": "2304.02643_sam.pdf"
+  },
+  {
+    "id": "mamba",
+    "title": "Mamba: Linear-Time Sequence Modeling with Selective State Spaces",
+    "category": "architecture",
+    "arxiv_id": "2312.00752",
+    "filename": "2312.00752_mamba.pdf"
+  },
+  {
+    "id": "gpt4",
+    "title": "GPT-4 Technical Report",
+    "category": "llms",
+    "arxiv_id": "2303.08774",
+    "filename": "2303.08774_gpt4.pdf"
+  }
+]

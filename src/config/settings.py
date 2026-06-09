@@ -17,8 +17,14 @@ class Settings(BaseSettings):
     openai_output_price_per_1m: float | None = None
 
     tavily_api_key: str | None = None
+    qdrant_mode: str = "local"  # "local" = embedded file storage (no Docker); "server" = Qdrant via URL
     qdrant_url: str = "http://localhost:6333"
+    qdrant_local_path: str = "data/qdrant_storage"
     qdrant_collection: str = "researchiq"
+    bm25_index_path: str = "data/bm25_index.json"
+    cross_encoder_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    rag_chunk_size: int = 1000
+    rag_chunk_overlap: int = 100
 
     langchain_tracing_v2: bool = False
     langchain_api_key: str | None = None

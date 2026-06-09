@@ -47,6 +47,27 @@ class DocumentChunk(BaseModel):
     text: str = ""
     source: str = ""
     score: float = 0.0
+    chunk_id: str = ""
+    title: str = ""
+    category: str = ""
+
+
+class IngestRequest(BaseModel):
+    """Request body for POST /ingest."""
+
+    url: str | None = None
+    text: str | None = None
+    pdf_path: str | None = None
+    title: str | None = None
+    category: str | None = None
+
+
+class IngestResponse(BaseModel):
+    """Response from POST /ingest."""
+
+    chunks_indexed: int
+    source: str
+    message: str
 
 
 class ResearchReport(BaseModel):

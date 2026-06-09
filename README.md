@@ -9,7 +9,15 @@
 - Dispatches parallel Web Researcher and Document Analyst agents
 - Synthesises findings into a cited, structured report saved to Notion
 
-## Phase 1 Status (current)
+## Phase 2 Status (current)
+
+- RAG ingestion pipeline (PDF, URL, text) with semantic chunking
+- Dual indexing: Qdrant (dense) + BM25 (sparse, JSON-backed)
+- Hybrid search with RRF fusion + cross-encoder re-ranking
+- `POST /ingest` FastAPI endpoint
+- Seed corpus: 10 curated ArXiv papers (transformers, LLMs, vision)
+
+## Phase 1 Status (complete)
 
 - Project scaffold with typed Pydantic settings
 - Coordinator agent (`gpt-5.4-mini`) decomposes queries into 2–4 sub-tasks
@@ -23,7 +31,7 @@
 | Orchestration | LangGraph (multi-agent, async) |
 | LLM | OpenAI `gpt-5.4-mini` |
 | Embeddings | OpenAI `text-embedding-3-small` |
-| Vector Store | Qdrant (Docker) |
+| Vector Store | Qdrant (local embedded or Docker) |
 | Retrieval | Hybrid BM25 + dense + RRF + cross-encoder re-ranking (Phase 2+) |
 | MCP Servers | Custom Tavily MCP + Notion MCP (Phase 3+) |
 | Backend | FastAPI + asyncio (Phase 4) |
@@ -33,6 +41,7 @@
 ## Documentation
 
 - [`docs/ResearchIQ_System_Design.docx`](docs/ResearchIQ_System_Design.docx) — Full system & solution design document
+- [`docs/build_project_running.md`](docs/build_project_running.md) — Build & run guide (Phase 1 & 2)
 - [`AI_research_report_agent_plan.md`](AI_research_report_agent_plan.md) — Capstone project plan
 
 ## Setup
@@ -45,7 +54,34 @@ pip install -e ".[dev]"
 cp .env.example .env
 # Edit .env and set OPENAI_API_KEY
 
-docker compose up -d   # optional for Phase 1, required for Phase 2
+# Qdrant — pick ONE option:
+# Option A (default, no Docker): QDRANT_MODE=local in .env — nothing else to start
+# Option B (Docker): install Docker Desktop, set QDRANT_MODE=server, then:
+#   docker compose up -d
+```
+
+## Phase 2 — Knowledge Base Setup
+
+**No Docker?** Use the default `QDRANT_MODE=local` in `.env`. Vectors are stored under `data/qdrant_storage/`.
+
+```bash
+# Download 10 ArXiv seed PDFs
+python scripts/download_seed_docs.py
+
+# Index into Qdrant + BM25 (requires OPENAI_API_KEY for embeddings)
+python scripts/seed_knowledge_base.py
+
+# Query the knowledge base (hybrid search)
+python scripts/query_knowledge_base.py "self-attention mechanism in transformers"
+python scripts/query_knowledge_base.py "vision transformer patch embeddings" --skip-rerank
+
+# Start API server
+uvicorn src.api.main:app --reload --port 8000
+
+# Ingest additional documents
+curl -X POST localhost:8000/ingest \
+  -H "Content-Type: application/json" \
+  -d '{"text": "Transformer models use self-attention...", "title": "Notes"}'
 ```
 
 ## Usage
@@ -86,10 +122,10 @@ src/
 
 | Phase | Scope |
 |-------|-------|
-| **1** (current) | Scaffold + coordinator agent |
-| **2** | RAG ingestion, hybrid search, re-ranking |
+| **1** (complete) | Scaffold + coordinator agent |
+| **2** (current) | RAG ingestion, hybrid search, re-ranking, `/ingest` |
 | **3** | Web/doc agents, Tavily MCP |
-| **4** | Report writer, Notion MCP, FastAPI, Streamlit |
+| **4** | Report writer, Notion MCP, FastAPI `/research`, Streamlit |
 
 ## Project Status
 

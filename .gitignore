@@ -14,6 +14,8 @@ build/
 .coverage
 htmlcov/
 data/bm25_index.json
+data/qdrant_storage/
+data/sample_docs/pdfs/
 *.log
 .DS_Store
 node_modules/
