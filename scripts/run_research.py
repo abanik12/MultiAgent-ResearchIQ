@@ -53,6 +53,14 @@ async def main() -> None:
 
     result = await run_research(args.query)
 
+    settings = get_settings()
+    if settings.report_export_enabled and result.get("synthesis"):
+        from src.utils.report_export import export_report_files
+
+        export_paths = export_report_files(result["synthesis"], args.query, settings=settings)
+        print(f"\nExported markdown: {export_paths.markdown_path}")
+        print(f"Exported PDF:      {export_paths.pdf_path}")
+
     print("Sub-tasks:")
     for index, task in enumerate(result["sub_tasks"], start=1):
         print(f"  {index}. {task}")

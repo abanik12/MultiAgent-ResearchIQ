@@ -16,6 +16,7 @@ htmlcov/
 data/bm25_index.json
 data/qdrant_storage/
 data/sample_docs/pdfs/
+data/reports/
 *.log
 .DS_Store
 node_modules/

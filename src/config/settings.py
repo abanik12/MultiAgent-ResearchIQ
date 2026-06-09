@@ -33,6 +33,9 @@ class Settings(BaseSettings):
     langchain_api_key: str | None = None
     langchain_project: str = "researchiq"
 
+    report_output_dir: str = "data/reports"
+    report_export_enabled: bool = True
+
 
 @lru_cache
 def get_settings() -> Settings:

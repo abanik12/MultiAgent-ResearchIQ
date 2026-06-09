@@ -79,3 +79,69 @@ class ResearchReport(BaseModel):
     summary: str = ""
     sections: list[str] = Field(default_factory=list)
     sources: list[str] = Field(default_factory=list)
+
+
+class ResearchRequest(BaseModel):
+    """Request body for POST /research."""
+
+    query: str = Field(min_length=3)
+    export_report: bool = True
+
+
+class ReportExportPaths(BaseModel):
+    """Filesystem paths for exported report artifacts."""
+
+    report_id: str
+    markdown_path: str
+    pdf_path: str
+
+
+class ResearchDonePayload(BaseModel):
+    """Final payload emitted when research completes."""
+
+    query: str
+    sub_tasks: list[str]
+    web_findings_count: int
+    doc_findings_count: int
+    report_title: str
+    synthesis: str
+    export: ReportExportPaths | None = None
+
+
+class AgentStartEvent(BaseModel):
+    agent: str
+    message: str = ""
+    task_id: int | None = None
+    task: str | None = None
+
+
+class AgentEndEvent(BaseModel):
+    agent: str
+    message: str = ""
+    task_id: int | None = None
+    web_findings_count: int | None = None
+    doc_findings_count: int | None = None
+
+
+class PhaseEvent(BaseModel):
+    phase: str
+    message: str = ""
+
+
+class ToolCallEvent(BaseModel):
+    agent: str
+    tool: str
+    input_summary: str = ""
+    task_id: int | None = None
+
+
+class TraceMessageEvent(BaseModel):
+    agent: str
+    message: str
+    task_id: int | None = None
+
+
+class PlanStreamEvent(BaseModel):
+    sub_tasks: list[str]
+    strategy: str = ""
+    message: str = "Research plan ready"

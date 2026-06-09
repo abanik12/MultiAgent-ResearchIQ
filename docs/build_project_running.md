@@ -997,9 +997,70 @@ As of the last build session:
 | `query_knowledge_base.py` | Working |
 | FastAPI `/health` | Working |
 | FastAPI `/ingest` | Working |
+| FastAPI `POST /research` (SSE) | Working |
+| Streamlit UI | Working |
+| Markdown + PDF export | Working |
 | Docker / `docker compose` | Not required (local Qdrant) |
-| GitHub `main` branch | Phase 1 + Phase 2 + token/cost merged |
 
 ---
 
-*Last updated: Phase 3 complete — specialist agents, Tavily MCP, report writer, and full research pipeline.*
+# Phase 4 — API, export & Streamlit (MVP)
+
+Phase 4 wraps the Phase 3 pipeline in a production-style interface. **Notion was replaced** with local **markdown + PDF export**.
+
+## What's new
+
+| Feature | Location |
+|---------|----------|
+| SSE streaming research | `POST /research` |
+| Markdown + PDF export | `src/utils/report_export.py` → `data/reports/` |
+| Download endpoints | `GET /research/reports/{id}/markdown` and `/pdf` |
+| Streamlit UI | `ui/app.py` |
+| CLI export | `scripts/run_research.py` (when `REPORT_EXPORT_ENABLED=true`) |
+
+## Run Phase 4
+
+```bash
+# API
+uvicorn src.api.main:app --reload --port 8000
+
+# Streamlit (separate terminal)
+pip install -e ".[ui]"
+streamlit run ui/app.py
+
+# CLI with export
+python scripts/run_research.py "your query"
+```
+
+## Environment
+
+```bash
+REPORT_OUTPUT_DIR=data/reports
+REPORT_EXPORT_ENABLED=true
+RESEARCHIQ_API_URL=http://localhost:8000   # Streamlit only
+```
+
+## SSE event types
+
+The API streams curated agent trace events (no raw LLM tokens). Use LangSmith (`LANGCHAIN_TRACING_V2=true`) for deep debugging.
+
+| Event | Meaning | Key fields |
+|-------|---------|------------|
+| `status` | Pipeline status message | `message` |
+| `phase` | High-level stage | `phase` (`planning`, `research`, `synthesis`, `export`), `message` |
+| `agent_start` | Agent/node begins work | `agent`, `message`, optional `task_id`, `task` |
+| `agent_end` | Agent/node finished | `agent`, `message`, optional counts |
+| `plan` | Coordinator plan ready | `sub_tasks`, `strategy`, `message` |
+| `tool_call` | ReAct tool invocation | `agent`, `tool`, `input_summary`, optional `task_id` |
+| `trace` | Curated status line | `agent`, `message`, optional `task_id` |
+| `web_finding` | One web result | `finding` |
+| `doc_finding` | One KB chunk | `finding` |
+| `export` | Markdown/PDF paths written | `report_id`, paths, `message` |
+| `done` | Final report + counts | `result` |
+| `error` | Failure message | `message` |
+
+The Streamlit UI consumes these events incrementally and renders a live agent timeline plus counters for web/doc findings.
+
+---
+
+*Last updated: Phase 4 — live agent trace UI, enriched SSE events, incremental Streamlit rendering.*

@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
-from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
 from langchain_core.tools import StructuredTool
 from langgraph.prebuilt import create_react_agent
 
@@ -88,6 +89,86 @@ def _parse_tool_results(messages: list) -> list[SearchResult]:
     return findings
 
 
+def extract_react_trace_steps(
+    messages: list,
+    *,
+    task_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """Build curated trace events from a ReAct agent message history."""
+    steps: list[dict[str, Any]] = []
+
+    for message in messages:
+        if isinstance(message, AIMessage):
+            tool_calls = getattr(message, "tool_calls", None) or []
+            for tool_call in tool_calls:
+                name = tool_call.get("name", "tool")
+                args = tool_call.get("args") or {}
+                if name == "web_search":
+                    summary = str(args.get("query", ""))
+                elif name == "get_page_content":
+                    summary = str(args.get("url", ""))
+                else:
+                    summary = str(args)
+                steps.append(
+                    {
+                        "type": "tool_call",
+                        "agent": "web_researcher",
+                        "tool": name,
+                        "input_summary": summary[:160],
+                        "task_id": task_id,
+                    }
+                )
+            continue
+
+        if not isinstance(message, ToolMessage):
+            continue
+
+        if message.name == "web_search":
+            content = message.content if isinstance(message.content, str) else ""
+            try:
+                data = json.loads(content)
+                count = len(data) if isinstance(data, list) else 0
+                steps.append(
+                    {
+                        "type": "trace",
+                        "agent": "web_researcher",
+                        "message": f"web_search returned {count} result(s)",
+                        "task_id": task_id,
+                    }
+                )
+            except json.JSONDecodeError:
+                steps.append(
+                    {
+                        "type": "trace",
+                        "agent": "web_researcher",
+                        "message": "web_search completed",
+                        "task_id": task_id,
+                    }
+                )
+        elif message.name == "get_page_content":
+            content = message.content if isinstance(message.content, str) else ""
+            if content.startswith("Could not fetch"):
+                steps.append(
+                    {
+                        "type": "trace",
+                        "agent": "web_researcher",
+                        "message": "Page fetch blocked or failed — continuing with snippets",
+                        "task_id": task_id,
+                    }
+                )
+            else:
+                steps.append(
+                    {
+                        "type": "trace",
+                        "agent": "web_researcher",
+                        "message": "Page content retrieved",
+                        "task_id": task_id,
+                    }
+                )
+
+    return steps
+
+
 async def create_web_researcher(settings: Settings | None = None):
     """Create a ReAct agent with Tavily web search tools."""
     settings = settings or get_settings()
@@ -124,11 +205,12 @@ async def research_web(
     settings: Settings | None = None,
     *,
     use_mcp: bool = False,
-) -> list[SearchResult]:
+    task_id: int | None = None,
+) -> tuple[list[SearchResult], list[dict[str, Any]]]:
     """Run web research for a single sub-task."""
     settings = settings or get_settings()
     if not settings.tavily_api_key:
-        return []
+        return [], []
 
     if use_mcp:
         agent = await create_web_researcher_via_mcp(settings)
@@ -138,9 +220,26 @@ async def research_web(
     result = await agent.ainvoke(
         {"messages": [HumanMessage(content=f"Research sub-task: {task}")]}
     )
+    trace_steps = extract_react_trace_steps(result["messages"], task_id=task_id)
     findings = _parse_tool_results(result["messages"])
 
     if not findings:
+        trace_steps.append(
+            {
+                "type": "trace",
+                "agent": "web_researcher",
+                "message": "Fallback direct Tavily search",
+                "task_id": task_id,
+            }
+        )
         findings = await tavily_search(task, max_results=5, settings=settings)
 
-    return findings
+    trace_steps.append(
+        {
+            "type": "trace",
+            "agent": "web_researcher",
+            "message": f"Collected {len(findings)} source(s)",
+            "task_id": task_id,
+        }
+    )
+    return findings, trace_steps

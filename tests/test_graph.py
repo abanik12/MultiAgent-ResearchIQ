@@ -50,8 +50,8 @@ async def test_graph_end_to_end_with_mocks(mock_plan, mock_report):
 
     with (
         patch("src.graph.nodes.plan_research", new=AsyncMock(return_value=mock_plan)),
-        patch("src.graph.nodes.research_web", new=AsyncMock(return_value=mock_web)),
-        patch("src.graph.nodes.analyze_documents", new=AsyncMock(return_value=mock_doc)),
+        patch("src.graph.nodes.research_web", new=AsyncMock(return_value=(mock_web, []))),
+        patch("src.graph.nodes.analyze_documents", new=AsyncMock(return_value=(mock_doc, []))),
         patch(
             "src.graph.nodes.write_report",
             new=AsyncMock(return_value=(mock_report, "# Test Research Report\n\nSummary.")),

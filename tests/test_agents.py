@@ -118,10 +118,11 @@ async def test_research_web_falls_back_to_direct_search():
         mock_create.return_value = mock_agent
         mock_settings.return_value.tavily_api_key = "test-key"
 
-        findings = await research_web("transformer architectures")
+        findings, trace_steps = await research_web("transformer architectures")
 
     assert len(findings) == 1
     assert findings[0].url == "https://example.com"
+    assert any(step.get("message") == "Fallback direct Tavily search" for step in trace_steps)
 
 
 @pytest.mark.asyncio
@@ -137,9 +138,11 @@ async def test_analyze_documents_respects_rag_skip_rerank():
         "src.agents.doc_analyst.hybrid_search",
         return_value=mock_chunks,
     ) as mock_search:
-        await analyze_documents("attention mechanisms", settings=settings)
+        chunks, trace_steps = await analyze_documents("attention mechanisms", settings=settings)
 
     assert mock_search.call_args.args[5] is True
+    assert len(chunks) == 1
+    assert any("Searching KB" in step.get("message", "") for step in trace_steps)
 
 
 @pytest.mark.asyncio
@@ -154,8 +157,9 @@ async def test_analyze_documents_calls_hybrid_search():
         "src.agents.doc_analyst.hybrid_search",
         return_value=mock_chunks,
     ) as mock_search:
-        findings = await analyze_documents("attention mechanisms")
+        findings, trace_steps = await analyze_documents("attention mechanisms")
 
     mock_search.assert_called_once()
     assert len(findings) == 1
     assert findings[0].title == "Paper"
+    assert trace_steps[-1]["message"].startswith("Retrieved")
