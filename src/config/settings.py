@@ -29,9 +29,20 @@ class Settings(BaseSettings):
     rag_chunk_size: int = 1000
     rag_chunk_overlap: int = 100
 
+    langsmith_tracing: bool = False
+    langsmith_api_key: str | None = None
+    langsmith_project: str = "researchiq"
+    langsmith_endpoint: str = "https://api.smith.langchain.com"
+    langsmith_workspace_id: str | None = None
+
+    # Legacy LangChain env names (still supported)
     langchain_tracing_v2: bool = False
     langchain_api_key: str | None = None
     langchain_project: str = "researchiq"
+
+    rate_limit_enabled: bool = True
+    rate_limit_research_per_minute: int = 3
+    rate_limit_ingest_per_minute: int = 10
 
     report_output_dir: str = "data/reports"
     report_export_enabled: bool = True

@@ -1,4 +1,4 @@
-# ResearchIQ — Build & Run Guide (Phase 1, 2 & 3)
+# ResearchIQ — Build & Run Guide (Phases 1–4)
 
 This document explains **what was built**, **why**, and **how to run it** — written for someone new to the codebase who wants to understand what happens step-by-step when code runs.
 
@@ -13,13 +13,14 @@ This document explains **what was built**, **why**, and **how to run it** — wr
 5. [Phase 1 — Coordinator & LangGraph scaffold](#phase-1--coordinator--langgraph-scaffold)
 6. [Phase 2 — RAG knowledge base](#phase-2--rag-knowledge-base)
 7. [Phase 3 — Specialist agents & full pipeline](#phase-3--specialist-agents--full-pipeline)
-8. [API testing walkthrough](#api-testing-walkthrough)
-9. [How Phase 1, 2, and 3 connect](#how-phase-1-and-phase-2-connect)
-10. [Environment & configuration](#environment--configuration)
-11. [Commands cheat sheet](#commands-cheat-sheet)
-12. [What comes next (Phase 4+)](#what-comes-next-phase-3)
-13. [Troubleshooting](#troubleshooting)
-14. [Capstone talking points](#capstone-talking-points)
+8. [Phase 4 — API, UI, export & production](#phase-4--api-ui-export--production)
+9. [API testing walkthrough](#api-testing-walkthrough)
+10. [How the phases connect](#how-the-phases-connect)
+11. [Environment & configuration](#environment--configuration)
+12. [Commands cheat sheet](#commands-cheat-sheet)
+13. [What comes next](#what-comes-next)
+14. [Troubleshooting](#troubleshooting)
+15. [Capstone talking points](#capstone-talking-points)
 
 ---
 
@@ -29,16 +30,16 @@ ResearchIQ is an autonomous research platform. The end goal:
 
 > User asks a research question → system produces a structured intelligence report.
 
-We are building in phases. **Today (Phase 1 + 2 + 3):**
+We built in phases. **All four phases are complete:**
 
 | Phase | What it does | Status |
 |-------|--------------|--------|
 | **Phase 1** | Breaks a big question into 2–4 focused sub-tasks (coordinator agent) | Complete |
 | **Phase 2** | Indexes curated documents and retrieves relevant chunks (RAG) | Complete |
 | **Phase 3** | Web + doc agents search in parallel; report writer synthesizes markdown | Complete |
-| **Phase 4** | Full API, Streamlit UI, Notion export | Not started |
+| **Phase 4** | Streaming API, Streamlit UI, live agent trace, export, rate limiting, LangSmith | Complete |
 
-Think of Phase 1 as the **research manager** (plans only). Phase 2 is the **library** (stores and finds information). Phase 3 connects them with live web search and synthesis.
+Think of Phase 1 as the **research manager**, Phase 2 as the **library**, Phase 3 as the **research team**, and Phase 4 as the **product surface** (API, UI, observability, guardrails).
 
 **Related docs:**
 - Capstone master plan: [`AI_research_report_agent_plan.md`](../AI_research_report_agent_plan.md)
@@ -260,8 +261,8 @@ Est. total cost:  $0.000174
 
 | | Local CLI summary | LangSmith (optional) |
 |--|-------------------|----------------------|
-| Setup | Built-in | `LANGCHAIN_TRACING_V2=true` + API key |
-| Use case | Instant feedback in terminal | Full trace history, per-agent breakdown in Phase 3 |
+| Setup | Built-in | `LANGSMITH_TRACING=true` + `LANGSMITH_API_KEY` |
+| Use case | Instant feedback in terminal | Full trace history, per-agent breakdown (Phases 3–4) |
 | Cost tracking | Estimated from price table | Dashboard for supported models |
 
 Both can coexist; LangSmith is recommended for capstone observability long-term.
@@ -790,15 +791,15 @@ Integration tests (call live APIs) are marked `@pytest.mark.integration` and ski
 
 ---
 
-# How Phase 1, 2, and 3 connect
+# How the phases connect
 
-Phase 3 **connects** Phase 1 planning with Phase 2 retrieval and adds live web search:
+Phase 4 wraps the Phase 3 pipeline in a production-style interface:
 
 ```
-User query
+User query (CLI / API / Streamlit)
     │
     ▼
-Coordinator (Phase 1) ──► sub_tasks: ["Task A", "Task B", "Task C"]
+Coordinator (Phase 1) ──► sub_tasks
     │
     ├──► Web Researcher (Phase 3) ──► Tavily, live web
     │
@@ -806,9 +807,10 @@ Coordinator (Phase 1) ──► sub_tasks: ["Task A", "Task B", "Task C"]
                 │
                 ▼
          Report Writer (Phase 3) ──► markdown report
+                │
+                ▼
+         Export + SSE trace (Phase 4) ──► PDF, Streamlit timeline, LangSmith
 ```
-
-Phase 2 built the **library**. Phase 1 built the **planner**. Phase 3 gives the **researchers** access to both and produces the first real report.
 
 ---
 
@@ -836,13 +838,41 @@ QDRANT_LOCAL_PATH=data/qdrant_storage
 BM25_INDEX_PATH=data/bm25_index.json
 ```
 
+**Required for Phase 3 (web search + full pipeline):**
+
+```bash
+TAVILY_API_KEY=tvly-...
+RAG_SKIP_RERANK=false                # set true for faster doc analyst runs
+```
+
+**Phase 4 (API, export, UI, observability):**
+
+```bash
+REPORT_OUTPUT_DIR=data/reports
+REPORT_EXPORT_ENABLED=true
+RESEARCHIQ_API_URL=http://localhost:8000   # Streamlit only
+
+# LangSmith (optional — use LANGSMITH_* per current docs)
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_...
+LANGSMITH_PROJECT=researchiq
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+# LANGSMITH_WORKSPACE_ID=...             # org-scoped API keys only
+
+# Rate limiting (per client IP)
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_RESEARCH_PER_MINUTE=3
+RATE_LIMIT_INGEST_PER_MINUTE=10
+```
+
 **Optional:**
 
 ```bash
-USER_AGENT=ResearchIQ/0.2          # silences web-loader warning
-OPENAI_INPUT_PRICE_PER_1M=0.15       # custom cost estimates for CLI summary
+USER_AGENT=ResearchIQ/0.5              # silences web-loader warning
+OPENAI_INPUT_PRICE_PER_1M=0.15         # custom cost estimates for CLI summary
 OPENAI_OUTPUT_PRICE_PER_1M=0.60
-TAVILY_API_KEY=...                   # Phase 3 web search (required for full pipeline)
+WEB_SEARCH_RECENT_LIMIT_ENABLED=false  # cap total web links across a run
+WEB_SEARCH_RECENT_LIMIT=30
 ```
 
 ---
@@ -854,7 +884,7 @@ TAVILY_API_KEY=...                   # Phase 3 web search (required for full pip
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[dev]"
+pip install -e ".[dev,ui]"
 cp .env.example .env
 # Edit .env — set OPENAI_API_KEY
 ```
@@ -877,6 +907,24 @@ python scripts/run_research.py "What are the latest advances in agentic RAG?"
 
 # Same pipeline via coordinator script
 python scripts/run_coordinator.py --graph "Compare GPT-4 and LLaMA capabilities"
+```
+
+## Phase 4 — Full stack (API + UI)
+
+```bash
+# API (terminal 1)
+uvicorn src.api.main:app --reload --port 8000
+
+# Streamlit UI (terminal 2)
+streamlit run ui/app.py
+
+# Streaming research via curl
+curl -N -X POST http://localhost:8000/research \
+  -H "Content-Type: application/json" \
+  -d '{"query": "What is agentic RAG?", "export_report": true}'
+
+# CLI with markdown + PDF export
+python scripts/run_research.py "What is agentic RAG?"
 ```
 
 ## Phase 2 — Knowledge base
@@ -919,104 +967,34 @@ pytest tests/ -v -m "not integration"
 
 ---
 
-# What comes next (Phase 4+)
+# What comes next
 
-| Phase | Scope |
-|-------|-------|
-| **Phase 4** | Notion MCP, `POST /research` streaming API, Streamlit UI, Langfuse |
+Phase 4 is complete. Possible future work:
 
----
-
-# Troubleshooting
-
-| Problem | Cause | Fix |
-|---------|-------|-----|
-| `command not found: docker` | Docker not installed on Mac | Use default `QDRANT_MODE=local` — no Docker needed |
-| `fatal: couldn't find remote ref #` | Inline `# comment` on same line as git command | Put comments on separate lines; run git without trailing `# ...` |
-| Git push rejected (non-fast-forward) | Phase 1 commit was orphan root, not on top of remote | `git fetch origin && git rebase origin/main`, resolve README conflicts, push |
-| `AssertionError` from `load_dotenv()` | Heredoc `python << 'EOF'` | Use `scripts/query_knowledge_base.py` or `load_dotenv(".env")` |
-| `AttributeError: no attribute 'search'` | Old Qdrant API | Fixed: uses `query_points()` in `index_store.py` |
-| `Storage folder already accessed` | Multiple Qdrant local clients on same path (parallel doc analysts) | Fixed: `get_index_store()` singleton + lock; stop other processes using the same path |
-| `chunks_indexed: 0` on re-ingest | Deduplication by `chunk_id` | Expected for already-indexed docs |
-| `USER_AGENT not set` warning | Web/HTTP library identity (URL ingest, HF) | Add `USER_AGENT=ResearchIQ/0.2` to `.env`; harmless for PDF-only seed |
-| Coordinator works without remembering API key | Key is in `.env` | `grep OPENAI_API_KEY .env` — gitignored, not on GitHub |
-| OpenAI auth error on search/seed | Missing or invalid key | Set `OPENAI_API_KEY` in `.env` |
-| Slow first hybrid search | Cross-encoder model download (~80MB) | Use `--skip-rerank`; later queries faster |
-| `403 Forbidden` on page fetch | Site blocks scrapers (e.g. openai.com) | Expected — agent continues with Tavily snippets; no crash |
-| `Exception ignored in QdrantClient.__del__` | Local Qdrant client not closed before exit | Fixed: `close_index_store()` runs in `run_research()` and via `atexit` |
-| Seed takes long + costs money | Semantic chunking + embeddings for 10 full PDFs | Normal; one-time cost |
-
-### Git workflow reference
-
-```bash
-# Clone and setup
-git clone https://github.com/abanik12/MultiAgent-ResearchIQ.git
-cd MultiAgent-ResearchIQ
-python3 -m venv .venv && source .venv/bin/activate
-pip install -e ".[dev]"
-cp .env.example .env
-
-# Feature branch example (token/cost feature was merged this way)
-git checkout -b cursor/your-feature-name
-# ... make changes ...
-git add .
-git commit -m "Your message"
-git checkout main
-git merge cursor/your-feature-name
-git push origin main
-```
+| Item | Notes |
+|------|-------|
+| **Auth / API keys** | Protect `/research` and `/ingest` in shared deployments |
+| **Notion export** | Optional alternative to local markdown/PDF |
+| **Persistent rate-limit store** | Redis-backed limits for multi-instance API |
 
 ---
 
-# Capstone talking points
-
-1. **Multi-agent planning** — Coordinator decomposes queries with structured Pydantic output (2–4 sub-tasks).
-2. **Advanced RAG** — Hybrid BM25 + dense retrieval, RRF fusion, cross-encoder rerank (not naive vector search).
-3. **Curated KB** — 10 foundational AI papers, reproducible via manifest + scripts.
-4. **Production patterns** — FastAPI, typed settings, dual-index persistence, local + Docker Qdrant options.
-5. **Separation of concerns** — Planner (Phase 1) vs library (Phase 2) vs live web + synthesis (Phase 3).
-6. **Observability options** — Local token/cost CLI + optional LangSmith tracing.
-7. **Pragmatic engineering** — Local Qdrant when Docker unavailable; dedicated scripts over fragile heredocs.
-
----
-
-## Current operational status (your machine)
-
-As of the last build session:
-
-| Component | Status |
-|-----------|--------|
-| Phase 1 coordinator CLI | Working |
-| Phase 1 `--graph` mode | Working (full pipeline) |
-| Phase 3 `run_research.py` | Working |
-| Web Researcher (Tavily) | Working |
-| Doc Analyst (hybrid RAG) | Working |
-| Report Writer (markdown) | Working |
-| 10 seed PDFs downloaded | Done |
-| Knowledge base indexed | Done (~1,380 chunks) |
-| `query_knowledge_base.py` | Working |
-| FastAPI `/health` | Working |
-| FastAPI `/ingest` | Working |
-| FastAPI `POST /research` (SSE) | Working |
-| Streamlit UI | Working |
-| Markdown + PDF export | Working |
-| Docker / `docker compose` | Not required (local Qdrant) |
-
----
-
-# Phase 4 — API, export & Streamlit (MVP)
+# Phase 4 — API, UI, export & production
 
 Phase 4 wraps the Phase 3 pipeline in a production-style interface. **Notion was replaced** with local **markdown + PDF export**.
 
-## What's new
+## What's included
 
 | Feature | Location |
 |---------|----------|
-| SSE streaming research | `POST /research` |
+| SSE streaming research | `POST /research` → `src/graph/streaming.py` |
+| Live agent trace (curated) | SSE events + `ui/trace_renderer.py` |
 | Markdown + PDF export | `src/utils/report_export.py` → `data/reports/` |
 | Download endpoints | `GET /research/reports/{id}/markdown` and `/pdf` |
-| Streamlit UI | `ui/app.py` |
-| CLI export | `scripts/run_research.py` (when `REPORT_EXPORT_ENABLED=true`) |
+| Streamlit UI | `ui/app.py` (incremental SSE, no batch buffering) |
+| CLI export | `scripts/run_research.py` |
+| Rate limiting | `src/api/rate_limit.py` — per-IP on `/research` and `/ingest` |
+| LangSmith tracing | `src/utils/tracing.py` — `LANGSMITH_*` env vars |
 
 ## Run Phase 4
 
@@ -1025,24 +1003,45 @@ Phase 4 wraps the Phase 3 pipeline in a production-style interface. **Notion was
 uvicorn src.api.main:app --reload --port 8000
 
 # Streamlit (separate terminal)
-pip install -e ".[ui]"
 streamlit run ui/app.py
 
 # CLI with export
 python scripts/run_research.py "your query"
 ```
 
-## Environment
+## Rate limiting
+
+| Endpoint | Default limit | Scope |
+|----------|---------------|-------|
+| `POST /research` | 3 requests / minute / IP | Expensive multi-agent pipeline |
+| `POST /ingest` | 10 requests / minute / IP | KB indexing writes |
+
+When exceeded, the API returns `429 Too Many Requests` with a `Retry-After: 60` header. Set `RATE_LIMIT_ENABLED=false` for local development.
+
+## LangSmith tracing
+
+ResearchIQ uses **LangSmith only** (no Langfuse). Two observability layers:
+
+| Layer | Purpose | Where |
+|-------|---------|-------|
+| **Curated SSE trace** | Product UX — agent timeline in Streamlit | `src/graph/trace_context.py`, `ui/` |
+| **LangSmith** | Engineering — LLM spans, tool calls, costs | LangSmith dashboard |
+
+Enable LangSmith in `.env`:
 
 ```bash
-REPORT_OUTPUT_DIR=data/reports
-REPORT_EXPORT_ENABLED=true
-RESEARCHIQ_API_URL=http://localhost:8000   # Streamlit only
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_...
+LANGSMITH_PROJECT=researchiq
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+# LANGSMITH_WORKSPACE_ID=...   # org-scoped API keys only
 ```
+
+Legacy `LANGCHAIN_TRACING_V2` / `LANGCHAIN_API_KEY` still work as a fallback. **Restart the API or CLI** after changing `.env` — settings are loaded at startup. Traces appear under the project name you set (`researchiq` by default).
 
 ## SSE event types
 
-The API streams curated agent trace events (no raw LLM tokens). Use LangSmith (`LANGCHAIN_TRACING_V2=true`) for deep debugging.
+The API streams curated agent trace events (no raw LLM tokens):
 
 | Event | Meaning | Key fields |
 |-------|---------|------------|
@@ -1063,4 +1062,80 @@ The Streamlit UI consumes these events incrementally and renders a live agent ti
 
 ---
 
-*Last updated: Phase 4 — live agent trace UI, enriched SSE events, incremental Streamlit rendering.*
+## Current operational status
+
+| Component | Status |
+|-----------|--------|
+| Phase 1 coordinator CLI | Working |
+| Phase 3 `run_research.py` | Working |
+| Web Researcher (Tavily) | Working |
+| Doc Analyst (hybrid RAG) | Working |
+| Report Writer (markdown + PDF) | Working |
+| Knowledge base indexed | Done (~1,380 chunks from 10 seed PDFs) |
+| FastAPI `/health`, `/ingest` | Working |
+| FastAPI `POST /research` (SSE + live trace) | Working |
+| Streamlit UI | Working |
+| Rate limiting | Working (configurable) |
+| LangSmith tracing | Working when `LANGSMITH_*` configured |
+| Docker / `docker compose` | Not required (local Qdrant) |
+
+---
+
+# Troubleshooting
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| `command not found: docker` | Docker not installed on Mac | Use default `QDRANT_MODE=local` — no Docker needed |
+| `fatal: couldn't find remote ref #` | Inline `# comment` on same line as git command | Put comments on separate lines; run git without trailing `# ...` |
+| Git push rejected (non-fast-forward) | Phase 1 commit was orphan root, not on top of remote | `git fetch origin && git rebase origin/main`, resolve README conflicts, push |
+| `AssertionError` from `load_dotenv()` | Heredoc `python << 'EOF'` | Use `scripts/query_knowledge_base.py` or `load_dotenv(".env")` |
+| `AttributeError: no attribute 'search'` | Old Qdrant API | Fixed: uses `query_points()` in `index_store.py` |
+| `Storage folder already accessed` | Multiple Qdrant local clients on same path (parallel doc analysts) | Fixed: `get_index_store()` singleton + lock; stop other processes using the same path |
+| `chunks_indexed: 0` on re-ingest | Deduplication by `chunk_id` | Expected for already-indexed docs |
+| `USER_AGENT not set` warning | Web/HTTP library identity (URL ingest, HF) | Add `USER_AGENT=ResearchIQ/0.5` to `.env`; harmless for PDF-only seed |
+| Coordinator works without remembering API key | Key is in `.env` | `grep OPENAI_API_KEY .env` — gitignored, not on GitHub |
+| OpenAI auth error on search/seed | Missing or invalid key | Set `OPENAI_API_KEY` in `.env` |
+| Slow first hybrid search | Cross-encoder model download (~80MB) | Use `--skip-rerank`; later queries faster |
+| `403 Forbidden` on page fetch | Site blocks scrapers (e.g. openai.com) | Expected — agent continues with Tavily snippets; no crash |
+| `Exception ignored in QdrantClient.__del__` | Local Qdrant client not closed before exit | Fixed: `close_index_store()` runs in `run_research()` and via `atexit` |
+| Seed takes long + costs money | Semantic chunking + embeddings for 10 full PDFs | Normal; one-time cost |
+| Streamlit shows no live trace updates | Old UI buffered all SSE before rendering | Fixed in Phase 4 — ensure API is running and `RESEARCHIQ_API_URL` points to it |
+| `429 Too Many Requests` on `/research` | Rate limit exceeded (default 3/min/IP) | Wait 60s, set `RATE_LIMIT_ENABLED=false`, or raise `RATE_LIMIT_RESEARCH_PER_MINUTE` |
+| LangSmith shows no traces | Wrong env var names or empty API key | Use `LANGSMITH_TRACING=true` + `LANGSMITH_API_KEY=lsv2_...`; restart API after `.env` changes |
+| LangSmith auth error (EU account) | Wrong endpoint | Set `LANGSMITH_ENDPOINT=https://eu.api.smith.langchain.com` |
+| LangSmith org-scoped key fails | Missing workspace | Set `LANGSMITH_WORKSPACE_ID` from LangSmith settings |
+
+### Git workflow reference
+
+```bash
+# Clone and setup
+git clone https://github.com/abanik12/MultiAgent-ResearchIQ.git
+cd MultiAgent-ResearchIQ
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e ".[dev,ui]"
+cp .env.example .env
+
+# Feature branch example
+git checkout -b cursor/your-feature-name
+# ... make changes ...
+git add .
+git commit -m "Your message"
+git push -u origin HEAD
+```
+
+---
+
+# Capstone talking points
+
+1. **Multi-agent planning** — Coordinator decomposes queries with structured Pydantic output (2–4 sub-tasks).
+2. **Advanced RAG** — Hybrid BM25 + dense retrieval, RRF fusion, cross-encoder rerank (not naive vector search).
+3. **Curated KB** — 10 foundational AI papers, reproducible via manifest + scripts.
+4. **Parallel orchestration** — LangGraph `Send()` dispatches web + doc agents per sub-task concurrently.
+5. **Production API** — SSE streaming, rate limiting, markdown/PDF export, download endpoints.
+6. **Live agent trace UX** — Curated SSE timeline in Streamlit (no raw chain-of-thought tokens).
+7. **Observability** — Local token/cost CLI + LangSmith tracing (`LANGSMITH_*` env vars; no Langfuse).
+8. **Pragmatic engineering** — Local Qdrant when Docker unavailable; graceful scraper failures; singleton index store.
+
+---
+
+*Document version: Phase 4 complete — v0.5.0*

@@ -113,7 +113,7 @@ async def test_stream_research_emits_lifecycle_events():
         DocumentChunk(text="doc text", source="paper.pdf", score=0.9, title="Paper")
     ]
 
-    async def fake_astream(_state, stream_mode="updates"):
+    async def fake_astream(_state, stream_mode="updates", config=None):
         assert stream_mode == "updates"
         emit_trace_event(
             "agent_start",
@@ -203,7 +203,7 @@ async def test_stream_research_emits_lifecycle_events():
 
 @pytest.mark.asyncio
 async def test_stream_research_emits_trace_events_from_nodes():
-    async def fake_astream(_state, stream_mode="updates"):
+    async def fake_astream(_state, stream_mode="updates", config=None):
         emit_trace_event("agent_start", agent="coordinator", message="Planning")
         yield {"coordinator": {"sub_tasks": ["Task A"], "messages": []}}
         emit_trace_event(

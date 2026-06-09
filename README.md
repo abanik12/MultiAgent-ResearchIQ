@@ -1,62 +1,51 @@
 # MultiAgent-ResearchIQ
 
-**ResearchIQ** is an autonomous AI Research & Competitive Intelligence Agent that takes a topic or question and produces a structured intelligence report.
+**ResearchIQ** is an autonomous AI Research & Competitive Intelligence Agent. Give it a topic or question and it produces a structured, cited intelligence report — via CLI, streaming API, or Streamlit UI.
 
-## What it does
+## Features
 
-- Accepts a natural-language research query
-- Decomposes it into focused sub-tasks via a Coordinator agent
-- Dispatches parallel Web Researcher and Document Analyst agents
-- Synthesises findings into a cited markdown report with **PDF export**
+| Capability | Description |
+|------------|-------------|
+| **Multi-agent planning** | Coordinator decomposes queries into 2–4 focused sub-tasks |
+| **Parallel research** | Web Researcher (Tavily ReAct) + Doc Analyst (hybrid RAG) per sub-task |
+| **Report synthesis** | Report Writer produces markdown with web/KB source sections |
+| **Live agent trace** | SSE stream + Streamlit timeline (curated steps, no raw LLM tokens) |
+| **Export** | Markdown + styled PDF to `data/reports/` |
+| **Production API** | FastAPI with rate limiting, CORS for Streamlit, download endpoints |
+| **Observability** | Local token/cost CLI + optional **LangSmith** tracing (no Langfuse) |
 
-## Phase 4 Status (current — MVP)
+## Architecture
 
-- `POST /research` — SSE streaming research pipeline
-- Markdown + PDF export to `data/reports/`
-- Report download endpoints (`/research/reports/{id}/markdown|pdf`)
-- Streamlit UI with live progress + download buttons
+```
+User query
+    │
+    ▼
+Coordinator ──► sub_tasks
+    │
+    ├──► Web Researcher (×N) ──► Tavily + optional page fetch
+    │
+    └──► Doc Analyst (×N) ──► hybrid RAG (Qdrant + BM25 + rerank)
+                │
+                ▼
+         Report Writer ──► markdown report ──► PDF export
+```
 
-## Phase 3 Status (complete)
+Orchestration: **LangGraph** with parallel `Send()` dispatch per sub-task.
 
-- Web Researcher agent (Tavily search + page fetch via ReAct)
-- Document Analyst agent (hybrid RAG over seeded knowledge base)
-- Report Writer agent (structured markdown synthesis)
-- LangGraph dual `Send()` dispatch: web + doc agents per sub-task in parallel
-- Tavily MCP server (`src/mcp/tavily_server.py`)
-- End-to-end CLI: `scripts/run_research.py`
-
-## Phase 2 Status (complete)
-
-- RAG ingestion pipeline (PDF, URL, text) with semantic chunking
-- Dual indexing: Qdrant (dense) + BM25 (sparse, JSON-backed)
-- Hybrid search with RRF fusion + cross-encoder re-ranking
-- `POST /ingest` FastAPI endpoint
-- Seed corpus: 10 curated ArXiv papers (transformers, LLMs, vision)
-
-## Phase 1 Status (complete)
-
-- Project scaffold with typed Pydantic settings
-- Coordinator agent (`gpt-5.4-mini`) decomposes queries into 2–4 sub-tasks
-- LangGraph orchestration with parallel `Send()` dispatch to web + doc agents
-
-## Tech Stack
+## Tech stack
 
 | Layer | Technology |
-|---|---|
-| Orchestration | LangGraph (multi-agent, async) |
+|-------|------------|
+| Orchestration | LangGraph |
 | LLM | OpenAI `gpt-5.4-mini` |
 | Embeddings | OpenAI `text-embedding-3-small` |
-| Vector Store | Qdrant (local embedded or Docker) |
-| Retrieval | Hybrid BM25 + dense + RRF + cross-encoder re-ranking |
-| MCP Servers | Custom Tavily MCP |
-| Backend | FastAPI + SSE streaming |
+| Vector store | Qdrant (local embedded or Docker) |
+| Retrieval | BM25 + dense + RRF + cross-encoder rerank |
+| Web search | Tavily (+ custom Tavily MCP server) |
+| Backend | FastAPI, SSE streaming, in-memory rate limiting |
 | Frontend | Streamlit |
 | Export | Markdown + PDF (`fpdf2`) |
-
-## Documentation
-
-- [`docs/build_project_running.md`](docs/build_project_running.md) — Build & run guide (Phases 1–4)
-- [`AI_research_report_agent_plan.md`](AI_research_report_agent_plan.md) — Capstone project plan
+| Tracing | LangSmith (`LANGSMITH_*` env vars) |
 
 ## Setup
 
@@ -66,31 +55,41 @@ source .venv/bin/activate
 pip install -e ".[dev,ui]"
 
 cp .env.example .env
-# Edit .env — set OPENAI_API_KEY, TAVILY_API_KEY
+# Required: OPENAI_API_KEY, TAVILY_API_KEY
+# Optional: LANGSMITH_* for tracing (see below)
 ```
 
-## Quick start (Phase 4)
+### Knowledge base (first run)
 
-**Terminal 1 — API:**
+```bash
+python scripts/download_seed_docs.py   # 10 curated ArXiv papers
+python scripts/seed_knowledge_base.py  # index into Qdrant + BM25
+```
+
+## Quick start
+
+**Terminal 1 — API**
 
 ```bash
 uvicorn src.api.main:app --reload --port 8000
 ```
 
-**Terminal 2 — Streamlit UI:**
+**Terminal 2 — Streamlit UI**
 
 ```bash
 streamlit run ui/app.py
 ```
 
-**Or CLI with export:**
+Open the UI, enter a research question, and watch the live agent trace update as SSE events arrive. The report and download buttons appear when the run completes.
+
+**CLI (with export)**
 
 ```bash
 python scripts/run_research.py "What are the latest advances in agentic RAG?"
-# Writes data/reports/<timestamp>_<slug>.md and .pdf
+# → data/reports/<timestamp>_<slug>.md and .pdf
 ```
 
-**Or curl (streaming):**
+**curl (streaming SSE)**
 
 ```bash
 curl -N -X POST http://localhost:8000/research \
@@ -98,12 +97,65 @@ curl -N -X POST http://localhost:8000/research \
   -d '{"query": "Compare transformer and Mamba architectures", "export_report": true}'
 ```
 
-## Phase 2 — Knowledge Base Setup
+## API endpoints
+
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/health` | Health check |
+| `POST` | `/ingest` | Add PDF, URL, or text to the knowledge base |
+| `POST` | `/research` | Run full pipeline; streams SSE events |
+| `GET` | `/research/reports/{id}/markdown` | Download exported markdown |
+| `GET` | `/research/reports/{id}/pdf` | Download exported PDF |
+
+Rate limits (default, per IP): **3/min** on `/research`, **10/min** on `/ingest`. Set `RATE_LIMIT_ENABLED=false` in `.env` for unrestricted local dev.
+
+## Environment variables
+
+Copy `.env.example` → `.env`. Key settings:
 
 ```bash
-python scripts/download_seed_docs.py
-python scripts/seed_knowledge_base.py
-python scripts/query_knowledge_base.py "self-attention mechanism in transformers"
+# Required
+OPENAI_API_KEY=
+TAVILY_API_KEY=
+
+# Qdrant (default: local, no Docker)
+QDRANT_MODE=local
+
+# Report export
+REPORT_OUTPUT_DIR=data/reports
+REPORT_EXPORT_ENABLED=true
+RESEARCHIQ_API_URL=http://localhost:8000   # Streamlit only
+
+# LangSmith tracing (optional)
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_...
+LANGSMITH_PROJECT=researchiq
+LANGSMITH_ENDPOINT=https://api.smith.langchain.com
+# LANGSMITH_WORKSPACE_ID=...   # org-scoped API keys only
+
+# Rate limiting
+RATE_LIMIT_ENABLED=true
+RATE_LIMIT_RESEARCH_PER_MINUTE=3
+RATE_LIMIT_INGEST_PER_MINUTE=10
+```
+
+Restart the API/CLI after changing `.env`. LangSmith traces appear under the `researchiq` project; the Streamlit UI shows a separate curated timeline (not raw LLM tokens).
+
+## Project structure
+
+```
+src/
+├── agents/           # Coordinator, web researcher, doc analyst, report writer
+├── graph/            # LangGraph, SSE streaming, trace event queue
+├── rag/              # Ingestion, hybrid search, index store
+├── tools/            # Tavily search, scraper, RAG tools
+├── mcp/              # Tavily MCP server
+├── api/              # FastAPI routes + rate limiting
+└── utils/            # Token cost, report export, LangSmith config
+ui/
+├── app.py            # Streamlit UI (incremental SSE consumer)
+└── trace_renderer.py # Live timeline + metrics
+data/reports/         # Exported reports (gitignored)
 ```
 
 ## Tests
@@ -112,30 +164,21 @@ python scripts/query_knowledge_base.py "self-attention mechanism in transformers
 pytest tests/ -v -m "not integration"
 ```
 
-## Project Structure
+## Documentation
 
-```
-src/
-├── agents/          # Coordinator, web, doc, report writer
-├── graph/           # LangGraph + streaming.py
-├── rag/             # Ingestion + hybrid search
-├── tools/           # Search, scraper, RAG tools
-├── mcp/             # Tavily MCP server
-├── api/             # FastAPI (/ingest, /research)
-└── utils/           # Token cost, report export
-ui/
-└── app.py           # Streamlit UI
-data/reports/        # Exported markdown + PDF (gitignored)
-```
+- [`docs/build_project_running.md`](docs/build_project_running.md) — Full build & run guide (Phases 1–4)
+- [`AI_research_report_agent_plan.md`](AI_research_report_agent_plan.md) — Capstone project plan
 
 ## Roadmap
 
-| Phase | Scope |
-|-------|-------|
-| **1–3** (complete) | Planner, RAG, agents, CLI |
-| **4** (current MVP) | Streaming API, markdown/PDF export, Streamlit |
-| **Future** | Langfuse, rate limiting, optional Notion export |
+| Phase | Status | Scope |
+|-------|--------|-------|
+| 1 | Complete | Coordinator, LangGraph scaffold |
+| 2 | Complete | RAG ingestion, hybrid search, `/ingest` |
+| 3 | Complete | Web/doc agents, report writer, CLI |
+| 4 | Complete | SSE API, Streamlit, export, live trace, rate limiting, LangSmith |
+| Future | Planned | Auth/API keys, optional Notion export |
 
-## Project Status
+## Project status
 
-In active development — Capstone Project, AI Engineering Cohort
+Capstone project — AI Engineering Cohort. **v0.5.0**

@@ -1,7 +1,8 @@
 """Document ingestion API routes."""
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from src.api.rate_limit import ingest_rate_limit
 from src.models.schemas import IngestRequest, IngestResponse
 from src.rag.ingestion import ingest_document
 
@@ -9,7 +10,10 @@ router = APIRouter(prefix="/ingest", tags=["ingest"])
 
 
 @router.post("", response_model=IngestResponse)
-async def ingest(request: IngestRequest) -> IngestResponse:
+async def ingest(
+    request: IngestRequest,
+    _: None = Depends(ingest_rate_limit),
+) -> IngestResponse:
     """Add a PDF, URL, or text document to the knowledge base."""
     provided = [request.url, request.text, request.pdf_path]
     if sum(field is not None for field in provided) != 1:

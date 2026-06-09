@@ -1,11 +1,10 @@
-import os
-
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 
 from src.config.settings import get_settings
 from src.models.schemas import ResearchPlan, ResearchPlanResult
 from src.utils.token_cost import extract_token_usage
+from src.utils.tracing import configure_langsmith
 
 COORDINATOR_SYSTEM_PROMPT = """You are a research planning coordinator for ResearchIQ.
 
@@ -23,10 +22,7 @@ Rules:
 
 
 def _configure_tracing(settings) -> None:
-    if settings.langchain_tracing_v2 and settings.langchain_api_key:
-        os.environ["LANGCHAIN_TRACING_V2"] = "true"
-        os.environ["LANGCHAIN_API_KEY"] = settings.langchain_api_key
-        os.environ["LANGCHAIN_PROJECT"] = settings.langchain_project
+    configure_langsmith(settings)
 
 
 def _build_llm(settings) -> ChatOpenAI:

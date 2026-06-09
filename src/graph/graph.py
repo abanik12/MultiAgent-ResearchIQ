@@ -11,6 +11,7 @@ from src.graph.state import AgentState, WorkerState
 from src.config.settings import get_settings
 from src.rag.index_store import close_index_store
 from src.tools.search_tools import apply_web_findings_limit
+from src.utils.tracing import build_graph_run_config, configure_langsmith
 
 
 def route_to_agents(state: AgentState) -> list[Send]:
@@ -46,7 +47,10 @@ def build_graph():
 
 async def run_research(query: str) -> AgentState:
     """Run the full research graph for a query."""
+    settings = get_settings()
+    configure_langsmith(settings)
     app = build_graph()
+    run_config = build_graph_run_config(query, source="cli")
     initial_state: AgentState = {
         "query": query,
         "sub_tasks": [],
@@ -57,8 +61,7 @@ async def run_research(query: str) -> AgentState:
         "messages": [],
     }
     try:
-        result = await app.ainvoke(initial_state)
-        settings = get_settings()
+        result = await app.ainvoke(initial_state, config=run_config)
         result = {
             **result,
             "web_findings": apply_web_findings_limit(result["web_findings"], settings),

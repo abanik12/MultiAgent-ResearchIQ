@@ -18,6 +18,7 @@ from src.models.schemas import DocumentChunk, ReportExportPaths, ResearchDonePay
 from src.rag.index_store import close_index_store
 from src.tools.search_tools import apply_web_findings_limit
 from src.utils.report_export import export_report_files
+from src.utils.tracing import build_graph_run_config, configure_langsmith
 
 
 def _serialize_finding(finding: SearchResult | DocumentChunk | dict[str, Any]) -> dict[str, Any]:
@@ -50,7 +51,9 @@ async def stream_research(
 ) -> AsyncIterator[str]:
     """Yield SSE-formatted JSON events while the research graph runs."""
     settings = settings or get_settings()
+    configure_langsmith(settings)
     app = build_graph()
+    run_config = build_graph_run_config(query, source="api")
     initial_state: AgentState = {
         "query": query,
         "sub_tasks": [],
@@ -76,7 +79,7 @@ async def stream_research(
         yield _event("status", message="Starting research pipeline")
         yield _event("phase", phase="planning", message="Starting research pipeline")
 
-        async for chunk in app.astream(initial_state, stream_mode="updates"):
+        async for chunk in app.astream(initial_state, stream_mode="updates", config=run_config):
             for pending in _yield_pending_trace_events():
                 yield pending
 

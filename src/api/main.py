@@ -6,17 +6,20 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from src.api.routes import ingest, research
+from src.config.settings import get_settings
+from src.utils.tracing import configure_langsmith
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    configure_langsmith(get_settings())
     yield
 
 
 app = FastAPI(
     title="ResearchIQ API",
     description="Autonomous multi-agent research platform",
-    version="0.4.0",
+    version="0.5.0",
     lifespan=lifespan,
 )
 
