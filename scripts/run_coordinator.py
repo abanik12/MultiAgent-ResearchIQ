@@ -28,12 +28,16 @@ async def main() -> None:
     query = sys.argv[2] if use_graph else sys.argv[1]
 
     if use_graph:
-        print(f"Running full graph for: {query}\n")
+        print(f"Running full research pipeline for: {query}\n")
         result = await run_research(query)
         print("Sub-tasks:")
         for i, task in enumerate(result["sub_tasks"], 1):
             print(f"  {i}. {task}")
-        print(f"\nSynthesis: {result['synthesis']}")
+        print(f"\nWeb findings: {len(result['web_findings'])}")
+        print(f"Document findings: {len(result['doc_findings'])}")
+        print("\n" + "=" * 60)
+        print(result["synthesis"])
+        print("=" * 60)
     else:
         print(f"Planning research for: {query}\n")
         result = await plan_research_with_usage(query)

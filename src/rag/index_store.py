@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import atexit
 import json
+import threading
 import uuid
+from contextlib import nullcontext
 from pathlib import Path
 from typing import Any
 
@@ -14,6 +17,10 @@ from rank_bm25 import BM25Okapi
 
 from src.config.settings import Settings, get_settings
 from src.models.schemas import DocumentChunk
+
+_local_qdrant_lock = threading.RLock()
+_index_store: "IndexStore | None" = None
+_index_store_key: tuple[Any, ...] | None = None
 
 
 def create_qdrant_client(settings: Settings | None = None) -> QdrantClient:
@@ -92,7 +99,19 @@ class IndexStore:
         self._bm25_path = Path(self.settings.bm25_index_path)
         self._chunks: list[StoredChunk] = []
         self._bm25: BM25Okapi | None = None
+        self._closed = False
         self._load_bm25()
+
+    def close(self) -> None:
+        """Release the Qdrant client before interpreter shutdown."""
+        if self._closed:
+            return
+        with _local_qdrant_guard(self.settings):
+            close_fn = getattr(self._client, "close", None)
+            if close_fn is not None:
+                close_fn()
+        self._client = None  # type: ignore[assignment]
+        self._closed = True
 
     @property
     def embedding_dimension(self) -> int:
@@ -100,13 +119,14 @@ class IndexStore:
         return len(probe)
 
     def ensure_collection(self) -> None:
-        collections = [c.name for c in self._client.get_collections().collections]
-        if self.settings.qdrant_collection not in collections:
-            dim = self.embedding_dimension
-            self._client.create_collection(
-                collection_name=self.settings.qdrant_collection,
-                vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
-            )
+        with _local_qdrant_guard(self.settings):
+            collections = [c.name for c in self._client.get_collections().collections]
+            if self.settings.qdrant_collection not in collections:
+                dim = self.embedding_dimension
+                self._client.create_collection(
+                    collection_name=self.settings.qdrant_collection,
+                    vectors_config=VectorParams(size=dim, distance=Distance.COSINE),
+                )
 
     def _load_bm25(self) -> None:
         if not self._bm25_path.exists():
@@ -159,7 +179,11 @@ class IndexStore:
             )
             for chunk, vector in zip(new_chunks, new_vectors, strict=True)
         ]
-        self._client.upsert(collection_name=self.settings.qdrant_collection, points=points)
+        with _local_qdrant_guard(self.settings):
+            self._client.upsert(
+                collection_name=self.settings.qdrant_collection,
+                points=points,
+            )
 
         self._chunks.extend(new_chunks)
         self._rebuild_bm25()
@@ -171,11 +195,12 @@ class IndexStore:
             return []
         self.ensure_collection()
         query_vector = self._embeddings.embed_query(query)
-        response = self._client.query_points(
-            collection_name=self.settings.qdrant_collection,
-            query=query_vector,
-            limit=limit,
-        )
+        with _local_qdrant_guard(self.settings):
+            response = self._client.query_points(
+                collection_name=self.settings.qdrant_collection,
+                query=query_vector,
+                limit=limit,
+            )
         return [
             (hit.payload["chunk_id"], hit.score)
             for hit in response.points
@@ -200,3 +225,53 @@ class IndexStore:
 
 def make_chunk_id(source: str, index: int) -> str:
     return f"{uuid.uuid5(uuid.NAMESPACE_URL, source)}-{index}"
+
+
+def _settings_store_key(settings: Settings) -> tuple[Any, ...]:
+    return (
+        settings.qdrant_mode,
+        settings.qdrant_local_path,
+        settings.qdrant_url,
+        settings.qdrant_collection,
+        settings.bm25_index_path,
+        settings.openai_embedding_model,
+    )
+
+
+def get_index_store(settings: Settings | None = None) -> IndexStore:
+    """Return a process-wide IndexStore singleton (required for local Qdrant mode)."""
+    global _index_store, _index_store_key
+
+    settings = settings or get_settings()
+    key = _settings_store_key(settings)
+
+    with _local_qdrant_lock:
+        if _index_store is None or _index_store_key != key:
+            _index_store = IndexStore(settings=settings)
+            _index_store_key = key
+        return _index_store
+
+
+def close_index_store() -> None:
+    """Close and release the cached store (call before process exit)."""
+    global _index_store, _index_store_key
+
+    with _local_qdrant_lock:
+        if _index_store is not None:
+            _index_store.close()
+        _index_store = None
+        _index_store_key = None
+
+
+def reset_index_store() -> None:
+    """Clear the cached store (useful in tests)."""
+    close_index_store()
+
+
+def _local_qdrant_guard(settings: Settings):
+    if settings.qdrant_mode == "local":
+        return _local_qdrant_lock
+    return nullcontext()
+
+
+atexit.register(close_index_store)

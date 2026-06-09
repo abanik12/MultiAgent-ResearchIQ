@@ -1,4 +1,4 @@
-# ResearchIQ — Build & Run Guide (Phase 1 & Phase 2)
+# ResearchIQ — Build & Run Guide (Phase 1, 2 & 3)
 
 This document explains **what was built**, **why**, and **how to run it** — written for someone new to the codebase who wants to understand what happens step-by-step when code runs.
 
@@ -12,13 +12,14 @@ This document explains **what was built**, **why**, and **how to run it** — wr
 4. [Project layout](#project-layout)
 5. [Phase 1 — Coordinator & LangGraph scaffold](#phase-1--coordinator--langgraph-scaffold)
 6. [Phase 2 — RAG knowledge base](#phase-2--rag-knowledge-base)
-7. [API testing walkthrough](#api-testing-walkthrough)
-8. [How Phase 1 and Phase 2 connect](#how-phase-1-and-phase-2-connect)
-9. [Environment & configuration](#environment--configuration)
-10. [Commands cheat sheet](#commands-cheat-sheet)
-11. [What comes next (Phase 3+)](#what-comes-next-phase-3)
-12. [Troubleshooting](#troubleshooting)
-13. [Capstone talking points](#capstone-talking-points)
+7. [Phase 3 — Specialist agents & full pipeline](#phase-3--specialist-agents--full-pipeline)
+8. [API testing walkthrough](#api-testing-walkthrough)
+9. [How Phase 1, 2, and 3 connect](#how-phase-1-and-phase-2-connect)
+10. [Environment & configuration](#environment--configuration)
+11. [Commands cheat sheet](#commands-cheat-sheet)
+12. [What comes next (Phase 4+)](#what-comes-next-phase-3)
+13. [Troubleshooting](#troubleshooting)
+14. [Capstone talking points](#capstone-talking-points)
 
 ---
 
@@ -28,16 +29,16 @@ ResearchIQ is an autonomous research platform. The end goal:
 
 > User asks a research question → system produces a structured intelligence report.
 
-We are building in phases. **Today (Phase 1 + 2):**
+We are building in phases. **Today (Phase 1 + 2 + 3):**
 
 | Phase | What it does | Status |
 |-------|--------------|--------|
 | **Phase 1** | Breaks a big question into 2–4 focused sub-tasks (coordinator agent) | Complete |
 | **Phase 2** | Indexes curated documents and retrieves relevant chunks (RAG) | Complete |
-| **Phase 3** | Web + doc agents search in parallel using tools and RAG | Not started |
-| **Phase 4** | Full API, Streamlit UI, report writer, Notion | Not started |
+| **Phase 3** | Web + doc agents search in parallel; report writer synthesizes markdown | Complete |
+| **Phase 4** | Full API, Streamlit UI, Notion export | Not started |
 
-Think of Phase 1 as the **research manager** (plans only). Phase 2 is the **library** (stores and finds information). Phase 3 connects them.
+Think of Phase 1 as the **research manager** (plans only). Phase 2 is the **library** (stores and finds information). Phase 3 connects them with live web search and synthesis.
 
 **Related docs:**
 - Capstone master plan: [`AI_research_report_agent_plan.md`](../AI_research_report_agent_plan.md)
@@ -322,6 +323,8 @@ User Query
         END
 ```
 
+> **Note (Phase 3):** Stub workers were replaced. The live graph now dispatches `web_researcher` and `doc_analyst` in parallel per sub-task, then runs a real `report_writer`. See [Phase 3](#phase-3--specialist-agents--full-pipeline).
+
 ### Key files
 
 | File | Role |
@@ -330,7 +333,7 @@ User Query
 | `src/graph/nodes.py` | `coordinator_node` calls `plan_research()`; other nodes are stubs |
 | `src/graph/graph.py` | Builds `StateGraph`, wires edges, uses `Send()` for parallel dispatch |
 
-The `--graph` mode proves the **orchestration pattern** works before real agents exist in Phase 3.
+The `--graph` mode now runs the **full Phase 3 pipeline** (not stubs).
 
 ---
 
@@ -707,9 +710,89 @@ Uses FastAPI `TestClient` with mocked ingestion where appropriate.
 
 ---
 
-# How Phase 1 and Phase 2 connect
+# Phase 3 — Specialist agents & full pipeline
 
-Today they run **independently**. Phase 3 connects them:
+Phase 3 replaces stub workers with real agents and adds a report writer.
+
+## Architecture
+
+```
+User query
+    │
+    ▼
+Coordinator ──► sub_tasks: ["Task A", "Task B", ...]
+    │
+    ├──► Web Researcher (× N tasks) ──► Tavily search + optional page fetch
+    │
+    └──► Doc Analyst (× N tasks) ──► hybrid_search(task) on Phase 2 KB
+                │
+                ▼
+         Report Writer ──► structured ResearchReport + markdown synthesis
+```
+
+For each sub-task, LangGraph dispatches **two** parallel `Send()` calls — one to `web_researcher`, one to `doc_analyst`. Findings accumulate via reducers on `web_findings` and `doc_findings`. When all workers finish, `report_writer` synthesizes a markdown report.
+
+## Key files
+
+| File | Purpose |
+|------|---------|
+| `src/tools/search_tools.py` | Tavily web search with retries |
+| `src/tools/scraper_tools.py` | HTTP page fetch + HTML-to-text |
+| `src/tools/rag_tools.py` | LangChain wrapper for `hybrid_search()` |
+| `src/mcp/tavily_server.py` | MCP server exposing `web_search` + `get_page_content` |
+| `src/agents/web_researcher.py` | ReAct agent with Tavily tools |
+| `src/agents/doc_analyst.py` | Calls `hybrid_search()` per sub-task |
+| `src/agents/report_writer.py` | Structured `ResearchReport` → markdown |
+| `scripts/run_research.py` | End-to-end research CLI |
+| `tests/test_agents.py` | Agent unit tests |
+
+## Prerequisites
+
+1. Phase 2 knowledge base seeded (`python scripts/seed_knowledge_base.py`)
+2. `.env` contains `OPENAI_API_KEY` and `TAVILY_API_KEY`
+
+## Run the full pipeline
+
+```bash
+python scripts/run_research.py "What are the latest advances in agentic RAG?"
+```
+
+Or via the coordinator script:
+
+```bash
+python scripts/run_coordinator.py --graph "Compare transformer and Mamba architectures"
+```
+
+**What happens:**
+
+1. **Coordinator** decomposes the query into 2–4 sub-tasks.
+2. **Web Researcher** runs a ReAct loop per sub-task (Tavily search; optional page scrape).
+3. **Doc Analyst** runs hybrid RAG per sub-task against the seeded corpus.
+4. **Report Writer** synthesizes all findings into a cited markdown report.
+
+## Tavily MCP server (standalone)
+
+The MCP server can run independently for tooling demos:
+
+```bash
+python src/mcp/tavily_server.py
+```
+
+The web researcher uses embedded LangChain tools by default (`use_mcp=False`). Pass `use_mcp=True` to `research_web()` to load tools from the MCP subprocess instead.
+
+## Tests
+
+```bash
+pytest tests/test_agents.py tests/test_graph.py -v
+```
+
+Integration tests (call live APIs) are marked `@pytest.mark.integration` and skipped by default.
+
+---
+
+# How Phase 1, 2, and 3 connect
+
+Phase 3 **connects** Phase 1 planning with Phase 2 retrieval and adds live web search:
 
 ```
 User query
@@ -722,10 +805,10 @@ Coordinator (Phase 1) ──► sub_tasks: ["Task A", "Task B", "Task C"]
     └──► Doc Analyst (Phase 3) ──► hybrid_search(task) ──► Phase 2 KB
                 │
                 ▼
-         Report Writer (Phase 4) ──► final report
+         Report Writer (Phase 3) ──► markdown report
 ```
 
-Phase 2 built the **library**. Phase 1 built the **planner**. Phase 3 gives the **researchers** access to both.
+Phase 2 built the **library**. Phase 1 built the **planner**. Phase 3 gives the **researchers** access to both and produces the first real report.
 
 ---
 
@@ -759,7 +842,7 @@ BM25_INDEX_PATH=data/bm25_index.json
 USER_AGENT=ResearchIQ/0.2          # silences web-loader warning
 OPENAI_INPUT_PRICE_PER_1M=0.15       # custom cost estimates for CLI summary
 OPENAI_OUTPUT_PRICE_PER_1M=0.60
-TAVILY_API_KEY=...                   # Phase 3 web search
+TAVILY_API_KEY=...                   # Phase 3 web search (required for full pipeline)
 ```
 
 ---
@@ -782,8 +865,18 @@ cp .env.example .env
 # Planning only
 python scripts/run_coordinator.py "What are the latest advances in agentic RAG?"
 
-# Full graph (coordinator + stub workers)
+# Full graph (same as run_research.py)
 python scripts/run_coordinator.py --graph "Competitive landscape for AI coding assistants"
+```
+
+## Phase 3 — Full research pipeline
+
+```bash
+# End-to-end: coordinator → web + doc agents → report writer
+python scripts/run_research.py "What are the latest advances in agentic RAG?"
+
+# Same pipeline via coordinator script
+python scripts/run_coordinator.py --graph "Compare GPT-4 and LLaMA capabilities"
 ```
 
 ## Phase 2 — Knowledge base
@@ -826,12 +919,11 @@ pytest tests/ -v -m "not integration"
 
 ---
 
-# What comes next (Phase 3+)
+# What comes next (Phase 4+)
 
 | Phase | Scope |
 |-------|-------|
-| **Phase 3** | Web Researcher (Tavily MCP), Doc Analyst calls `hybrid_search()`, real graph workers |
-| **Phase 4** | Report Writer, Notion MCP, `POST /research`, Streamlit UI |
+| **Phase 4** | Notion MCP, `POST /research` streaming API, Streamlit UI, Langfuse |
 
 ---
 
@@ -844,12 +936,14 @@ pytest tests/ -v -m "not integration"
 | Git push rejected (non-fast-forward) | Phase 1 commit was orphan root, not on top of remote | `git fetch origin && git rebase origin/main`, resolve README conflicts, push |
 | `AssertionError` from `load_dotenv()` | Heredoc `python << 'EOF'` | Use `scripts/query_knowledge_base.py` or `load_dotenv(".env")` |
 | `AttributeError: no attribute 'search'` | Old Qdrant API | Fixed: uses `query_points()` in `index_store.py` |
-| `Storage folder already accessed` | Two Qdrant local clients on same path | One `IndexStore` per process; pass `store=` to `hybrid_search()` |
+| `Storage folder already accessed` | Multiple Qdrant local clients on same path (parallel doc analysts) | Fixed: `get_index_store()` singleton + lock; stop other processes using the same path |
 | `chunks_indexed: 0` on re-ingest | Deduplication by `chunk_id` | Expected for already-indexed docs |
 | `USER_AGENT not set` warning | Web/HTTP library identity (URL ingest, HF) | Add `USER_AGENT=ResearchIQ/0.2` to `.env`; harmless for PDF-only seed |
 | Coordinator works without remembering API key | Key is in `.env` | `grep OPENAI_API_KEY .env` — gitignored, not on GitHub |
 | OpenAI auth error on search/seed | Missing or invalid key | Set `OPENAI_API_KEY` in `.env` |
 | Slow first hybrid search | Cross-encoder model download (~80MB) | Use `--skip-rerank`; later queries faster |
+| `403 Forbidden` on page fetch | Site blocks scrapers (e.g. openai.com) | Expected — agent continues with Tavily snippets; no crash |
+| `Exception ignored in QdrantClient.__del__` | Local Qdrant client not closed before exit | Fixed: `close_index_store()` runs in `run_research()` and via `atexit` |
 | Seed takes long + costs money | Semantic chunking + embeddings for 10 full PDFs | Normal; one-time cost |
 
 ### Git workflow reference
@@ -880,7 +974,7 @@ git push origin main
 2. **Advanced RAG** — Hybrid BM25 + dense retrieval, RRF fusion, cross-encoder rerank (not naive vector search).
 3. **Curated KB** — 10 foundational AI papers, reproducible via manifest + scripts.
 4. **Production patterns** — FastAPI, typed settings, dual-index persistence, local + Docker Qdrant options.
-5. **Separation of concerns** — Planner (Phase 1) vs library (Phase 2) vs live web (Phase 3).
+5. **Separation of concerns** — Planner (Phase 1) vs library (Phase 2) vs live web + synthesis (Phase 3).
 6. **Observability options** — Local token/cost CLI + optional LangSmith tracing.
 7. **Pragmatic engineering** — Local Qdrant when Docker unavailable; dedicated scripts over fragile heredocs.
 
@@ -893,7 +987,11 @@ As of the last build session:
 | Component | Status |
 |-----------|--------|
 | Phase 1 coordinator CLI | Working |
-| Phase 1 `--graph` mode | Working (stub workers) |
+| Phase 1 `--graph` mode | Working (full pipeline) |
+| Phase 3 `run_research.py` | Working |
+| Web Researcher (Tavily) | Working |
+| Doc Analyst (hybrid RAG) | Working |
+| Report Writer (markdown) | Working |
 | 10 seed PDFs downloaded | Done |
 | Knowledge base indexed | Done (~1,380 chunks) |
 | `query_knowledge_base.py` | Working |
@@ -904,4 +1002,4 @@ As of the last build session:
 
 ---
 
-*Last updated: Phase 2 complete — includes build session notes, API testing, and troubleshooting from project development.*
+*Last updated: Phase 3 complete — specialist agents, Tavily MCP, report writer, and full research pipeline.*

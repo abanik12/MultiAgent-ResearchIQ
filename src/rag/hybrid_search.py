@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from src.config.settings import Settings, get_settings
 from src.models.schemas import DocumentChunk
-from src.rag.index_store import IndexStore
+from src.rag.index_store import IndexStore, get_index_store
 from src.rag.reranker import rerank
 
 RRF_K = 60
@@ -32,7 +32,7 @@ def hybrid_search(
 ) -> list[DocumentChunk]:
     """Run hybrid search with optional cross-encoder re-ranking."""
     settings = settings or get_settings()
-    store = store or IndexStore(settings)
+    store = store or get_index_store(settings)
 
     dense = store.dense_search(query, limit=retrieval_k)
     sparse = store.bm25_search(query, limit=retrieval_k)

@@ -15,7 +15,7 @@ from dotenv import load_dotenv
 load_dotenv(ROOT / ".env")
 
 from src.rag.hybrid_search import hybrid_search
-from src.rag.index_store import IndexStore
+from src.rag.index_store import close_index_store, get_index_store
 
 
 def main() -> None:
@@ -30,38 +30,41 @@ def main() -> None:
     parser.add_argument("--json", action="store_true", help="Output raw JSON")
     args = parser.parse_args()
 
-    store = IndexStore()
-    print(f"Indexed chunks: {store.chunk_count}", file=sys.stderr)
+    try:
+        store = get_index_store()
+        print(f"Indexed chunks: {store.chunk_count}", file=sys.stderr)
 
-    if store.chunk_count == 0:
-        print("No chunks indexed. Run: python scripts/seed_knowledge_base.py", file=sys.stderr)
-        sys.exit(1)
+        if store.chunk_count == 0:
+            print("No chunks indexed. Run: python scripts/seed_knowledge_base.py", file=sys.stderr)
+            sys.exit(1)
 
-    results = hybrid_search(
-        args.query,
-        top_k=args.top_k,
-        store=store,
-        skip_rerank=args.skip_rerank,
-    )
+        results = hybrid_search(
+            args.query,
+            top_k=args.top_k,
+            store=store,
+            skip_rerank=args.skip_rerank,
+        )
 
-    if args.json:
-        print(json.dumps([r.model_dump() for r in results], indent=2))
-        return
+        if args.json:
+            print(json.dumps([r.model_dump() for r in results], indent=2))
+            return
 
-    print(f"\nQuery: {args.query}\n")
-    if not results:
-        print("No results found.")
-        return
+        print(f"\nQuery: {args.query}\n")
+        if not results:
+            print("No results found.")
+            return
 
-    for i, r in enumerate(results, 1):
-        preview = r.text[:300].replace("\n", " ")
-        if len(r.text) > 300:
-            preview += "..."
-        print(f"--- Result {i} (score={r.score:.4f}) ---")
-        print(f"Title:    {r.title}")
-        print(f"Category: {r.category}")
-        print(f"Source:   {r.source}")
-        print(f"Text:     {preview}\n")
+        for i, r in enumerate(results, 1):
+            preview = r.text[:300].replace("\n", " ")
+            if len(r.text) > 300:
+                preview += "..."
+            print(f"--- Result {i} (score={r.score:.4f}) ---")
+            print(f"Title:    {r.title}")
+            print(f"Category: {r.category}")
+            print(f"Source:   {r.source}")
+            print(f"Text:     {preview}\n")
+    finally:
+        close_index_store()
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@ from src.api.main import app
 from src.config.settings import Settings
 from src.models.schemas import DocumentChunk
 from src.rag.hybrid_search import hybrid_search, reciprocal_rank_fusion
-from src.rag.index_store import IndexStore, StoredChunk
+from src.rag.index_store import IndexStore, StoredChunk, close_index_store, get_index_store, reset_index_store
 from src.rag.reranker import rerank
 
 
@@ -41,6 +41,31 @@ def memory_store(test_settings, tmp_path):
     ):
         with patch.object(store, "ensure_collection"):
             yield store
+
+
+def test_get_index_store_is_singleton(test_settings):
+    reset_index_store()
+    with patch("src.rag.index_store.create_qdrant_client") as mock_create:
+        mock_create.return_value = QdrantClient(":memory:")
+        first = get_index_store(test_settings)
+        second = get_index_store(test_settings)
+        assert first is second
+        mock_create.assert_called_once()
+    reset_index_store()
+
+
+def test_close_index_store_is_idempotent(test_settings):
+    reset_index_store()
+    with patch("src.rag.index_store.create_qdrant_client") as mock_create:
+        client = QdrantClient(":memory:")
+        client.close = MagicMock()
+        mock_create.return_value = client
+        store = get_index_store(test_settings)
+        close_index_store()
+        close_index_store()
+        client.close.assert_called_once()
+        assert store._closed
+    reset_index_store()
 
 
 def test_reciprocal_rank_fusion_combines_lists():

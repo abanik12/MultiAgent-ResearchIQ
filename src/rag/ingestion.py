@@ -12,7 +12,7 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 from src.config.settings import Settings, get_settings
-from src.rag.index_store import IndexStore, StoredChunk, make_chunk_id
+from src.rag.index_store import IndexStore, StoredChunk, get_index_store, make_chunk_id
 
 
 def _build_embeddings(settings: Settings) -> OpenAIEmbeddings:
@@ -101,7 +101,7 @@ async def ingest_document(
 ) -> tuple[int, str]:
     """Load, chunk, embed, and index a document. Returns (chunks_indexed, source)."""
     settings = settings or get_settings()
-    store = store or IndexStore(settings)
+    store = store or get_index_store(settings)
 
     if sum(bool(x) for x in (url, text, pdf_path)) != 1:
         raise ValueError("Provide exactly one of: url, text, pdf_path")

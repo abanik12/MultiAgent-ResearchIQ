@@ -9,7 +9,16 @@
 - Dispatches parallel Web Researcher and Document Analyst agents
 - Synthesises findings into a cited, structured report saved to Notion
 
-## Phase 2 Status (current)
+## Phase 3 Status (current)
+
+- Web Researcher agent (Tavily search + page fetch via ReAct)
+- Document Analyst agent (hybrid RAG over seeded knowledge base)
+- Report Writer agent (structured markdown synthesis, no Notion)
+- LangGraph dual `Send()` dispatch: web + doc agents per sub-task in parallel
+- Tavily MCP server (`src/mcp/tavily_server.py`)
+- End-to-end CLI: `scripts/run_research.py`
+
+## Phase 2 Status (complete)
 
 - RAG ingestion pipeline (PDF, URL, text) with semantic chunking
 - Dual indexing: Qdrant (dense) + BM25 (sparse, JSON-backed)
@@ -21,7 +30,7 @@
 
 - Project scaffold with typed Pydantic settings
 - Coordinator agent (`gpt-5.4-mini`) decomposes queries into 2–4 sub-tasks
-- LangGraph orchestration with parallel `Send()` dispatch to stub workers
+- LangGraph orchestration with parallel `Send()` dispatch to web + doc agents
 - Docker Compose for Qdrant (ready for Phase 2 RAG)
 
 ## Tech Stack
@@ -92,7 +101,13 @@ curl -X POST localhost:8000/ingest \
 python scripts/run_coordinator.py "What are the latest advances in agentic RAG?"
 ```
 
-**Full Phase 1 graph** (coordinator + parallel stubs + report writer stub):
+**Full research pipeline** (coordinator → parallel web + doc agents → report):
+
+```bash
+python scripts/run_research.py "What are the latest advances in agentic RAG?"
+```
+
+**Full graph via coordinator script** (same pipeline):
 
 ```bash
 python scripts/run_coordinator.py --graph "Competitive landscape for AI coding assistants in 2025"
@@ -110,11 +125,15 @@ pytest tests/ -v -m "not integration"
 src/
 ├── config/settings.py      # Pydantic Settings
 ├── models/schemas.py       # ResearchPlan, AgentState models
-├── agents/coordinator.py   # Query decomposition agent
+├── agents/
+│   ├── coordinator.py      # Query decomposition
+│   ├── web_researcher.py   # Tavily ReAct agent
+│   ├── doc_analyst.py      # Hybrid RAG retrieval
+│   └── report_writer.py    # Markdown synthesis
 ├── graph/                  # LangGraph state, nodes, graph
-├── rag/                    # Phase 2
-├── tools/                  # Phase 2+
-├── mcp/                    # Phase 3+
+├── rag/                    # Ingestion + hybrid search
+├── tools/                  # Search, scraper, RAG tools
+├── mcp/                    # Tavily MCP server
 └── api/                    # Phase 4
 ```
 
@@ -123,9 +142,9 @@ src/
 | Phase | Scope |
 |-------|-------|
 | **1** (complete) | Scaffold + coordinator agent |
-| **2** (current) | RAG ingestion, hybrid search, re-ranking, `/ingest` |
-| **3** | Web/doc agents, Tavily MCP |
-| **4** | Report writer, Notion MCP, FastAPI `/research`, Streamlit |
+| **2** (complete) | RAG ingestion, hybrid search, re-ranking, `/ingest` |
+| **3** (current) | Web/doc agents, report writer, Tavily MCP |
+| **4** | Notion MCP, FastAPI `/research`, Streamlit |
 
 ## Project Status
 

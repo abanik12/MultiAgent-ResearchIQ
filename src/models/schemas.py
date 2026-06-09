@@ -39,6 +39,8 @@ class SearchResult(BaseModel):
     url: str = ""
     snippet: str = ""
     source: str = ""
+    published_date: str = ""
+    score: float = 0.0
 
 
 class DocumentChunk(BaseModel):
